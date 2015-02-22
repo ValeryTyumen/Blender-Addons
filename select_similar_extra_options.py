@@ -7,10 +7,11 @@ bl_info = {
     "location": "",
     "warning": "",
     "wiki_url": "",
-    "category": ""    
+    "category": ""
 }
 
 import bpy
+import os
 
 class BonesExtraSelectSimilar(bpy.types.Operator):
     """Additional options for select_similar operator for Bones"""
@@ -31,52 +32,63 @@ class BonesExtraSelectSimilar(bpy.types.Operator):
         description="(enum in ['ALL', 'GROUP', 'CHILDREN', 'IMMEDIATE-CHILDREN', 'SIBLINGS']) - Search Set", 
         default="ALL")
 
+    def deselect_bone(self, bone):
+        bone.select = False
+        if bone.parent is None:
+            bone.select_head = False
+        else:
+            if not bone.parent.select:
+                bone.parent.select_tail = False
+        selected_child = False
+        for child in bone.children:
+            selected_child |= child.select
+        bone.select_tail = selected_child
+
     def filter_selected_as_group(self, active_pose_bone, context):
         for selected_pose_bone in context.selected_pose_bones:
                 gr1 = active_pose_bone.bone_group
                 gr2 = selected_pose_bone.bone_group
                 #  If groups don't exist or are not equal
                 if (gr1 is None) or (gr2 is None) or (gr1.name != gr2.name):
-                    selected_pose_bone.bone.select = False
+                    self.deselect_bone(selected_pose_bone.bone)
 
     def filter_selected_as_children(self, active_bone, context):
-        stack = []
-        children = []
-        for child in active_bone.children:
-            stack.append(child)
-        while len(stack) != 0:
-            child = stack.pop()
-            children.append(child)
-            stack += child.children
         for selected_bone in context.selected_bones:
-            if selected_bone not in children:
-                selected_bone.select = False
-            else:
-                print(selected_bone.name)
+            if selected_bone not in active_bone.children_recursive:
+                self.deselect_bone(selected_bone)
 
     def filter_selected_as_immediate_children(self, active_bone, context):
+        print('Active bone: ' + active_bone.name)
         for selected_bone in context.selected_bones:
-            if selected_bone not in active_bone.children:
-                selected_bone.select = False
+            if selected_bone not in active_bone.children:  
+                self.deselect_bone(selected_bone)
 
     def filter_selected_as_siblings(self, active_bone, context):
         parent = active_bone.parent
         for selected_bone in context.selected_bones:
             if (parent is None) or (selected_bone not in parent.children):
-                selected_bone.select = False
+                self.deselect_bone(selected_bone)
 
     def execute(self, context):
-        active_bone = context.active_bone
-        active_pose_bone = context.active_pose_bone
-        bpy.ops.armature.select_similar(type=self.prop_type, threshold=self.threshold)
         if self.search_set == 'GROUP':
-            self.filter_selected_as_group(active_pose_bone, context)
-        elif self.search_set == 'CHILDREN':
-            self.filter_selected_as_children(active_bone, context)
-        elif self.search_set == 'IMMEDIATE-CHILDREN':
-            self.filter_selected_as_immediate_children(active_bone, context)
-        elif self.search_set == 'SIBLINGS':
-            self.filter_selected_as_siblings(active_bone, context)
+            bpy.ops.object.mode_set(mode='POSE')
+            active_pose_bone = context.active_pose_bone
+            bpy.ops.object.mode_set(mode='EDIT')
+            if active_pose_bone is not None:
+                bpy.ops.armature.select_similar(type=self.prop_type, threshold=self.threshold)
+                bpy.ops.object.mode_set(mode='POSE')
+                self.filter_selected_as_group(active_pose_bone, context)
+                bpy.ops.object.mode_set(mode='EDIT')
+        else:
+            active_bone = bpy.context.active_bone
+            if active_bone is not None:
+                bpy.ops.armature.select_similar(type=self.prop_type, threshold=self.threshold)
+                if self.search_set == 'CHILDREN':
+                    self.filter_selected_as_children(active_bone, context)
+                elif self.search_set == 'IMMEDIATE-CHILDREN':
+                    self.filter_selected_as_immediate_children(active_bone, context)
+                elif self.search_set == 'SIBLINGS':
+                    self.filter_selected_as_siblings(active_bone, context)
         return { 'FINISHED' }
 
 def register():
