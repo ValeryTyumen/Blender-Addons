@@ -11,7 +11,6 @@ bl_info = {
 }
 
 import bpy
-import os
 
 class BonesExtraSelectSimilar(bpy.types.Operator):
     """Additional options for select_similar operator for Bones"""
